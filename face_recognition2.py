@@ -1,49 +1,90 @@
-import threading
 import cv2
+import os
 from deepface import DeepFace
 
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+db_path = "face_db"
+model_name = "Facenet512"         
+detection_backend = "opencv"     
 
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
-counter = 0
-
-reference_img = cv2.imread("reference.jpg")  # use your own image here
-
-face_match = False
+os.makedirs(db_path, exist_ok=True)
 
 
-def check_face(frame):
-    global face_match
-    try:
-        if DeepFace.verify(frame, reference_img.copy())['verified']:
-            face_match = True
-        else:
-            face_match = False
-    except ValueError:
-        face_match = False
+def capture_face_image(name="with you"):
+    save_path = os.path.join(db_path, f"{name}.jpg")
+    
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) 
+    if not cap.isOpened():
+        print("Error: Could not access webcam.")
+        exit()
+
+    print("Press 's' to save your face or 'q' to quit.")
+    i = 1
+    while i > 0:
+        ret, frame = cap.read()
+        if not ret:
+            print("Error: Frame not captured.")
+            break
+
+        cv2.imshow("Capture Your Face", frame)
+
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('s'):
+            cv2.imwrite(save_path, frame)
+            print(f"Saved your face as {save_path}")
+            break
+        elif key == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
 
 
-while True:
-    ret, frame = cap.read()
+def recognize_face():
+    name = "with you"  
 
-    if ret:
-        if counter % 30 == 0:
-            try:
-                threading.Thread(target=check_face, args=(frame.copy(),)).start()
-            except ValueError:
-                pass
-        counter += 1
-        if face_match:
-            cv2.putText(frame, "MATCH!", (20, 450), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
-        else:
-            cv2.putText(frame, "NO MATCH!", (20, 450), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
+  
+    captured_image_path = os.path.join(db_path, f"{name}.jpg")
+    if not os.path.exists(captured_image_path):
+        print("No face image found in the database. Capturing your face...")
+        capture_face_image(name)
 
-        cv2.imshow('video', frame)
+  
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    if not cap.isOpened():
+        print("Error: Could not access webcam.")
+        exit()
 
-    key = cv2.waitKey(1)
-    if key == ord('q'):
-        break
+    print("Press 'q' to quit.")
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("Error: Could not read frame.")
+            break
 
-cv2.destroyAllWindows()
+        try:
+            
+            result = DeepFace.verify(frame, captured_image_path, model_name=model_name, detector_backend=detection_backend)
+
+            if result['verified']:
+                text = f"Face matched: {name}"
+                color = (0, 255, 0)  
+            else:
+                text = "No match found"
+                color = (0, 0, 255)  
+
+        except Exception as e:
+            print(f"[ERROR] {str(e)}")
+            text = "Detection error"
+            color = (0, 0, 255)  
+
+       
+        cv2.putText(frame, text, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        cv2.imshow('Face Recognition', frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    cap.release()
+    cv2.destroyAllWindows()
+
+
+recognize_face()
